@@ -15,7 +15,7 @@
   <div id="statusText"></div>
 
   <script>
-    // 这个小脚本不依赖 Three.js。先保证 iPhone Safari 点击“开始”一定能触发摄像头权限。
+    // 相机权限独立启动：不依赖 Three.js / GLB，先保证 Safari 点击后能打开摄像头。
     (function () {
       var video = document.getElementById('cameraVideo');
       var button = document.getElementById('startButton');
@@ -37,7 +37,7 @@
         if (/NotReadable|TrackStart/i.test(name)) return '摄像头可能被其他软件占用';
         if (/Overconstrained/i.test(name)) return '摄像头参数不兼容';
         if (/getUserMedia unavailable/i.test(name)) return '当前浏览器不支持摄像头调用，请用 Safari/Chrome 打开 HTTPS 链接';
-        return '摄像头启动失败';
+        return '摄像头启动失败：' + name;
       }
 
       async function startCamera() {
@@ -98,8 +98,14 @@
     })();
   </script>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="./main.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="./main.js" onerror="document.getElementById('statusText').textContent='Three.js 脚本加载失败';document.getElementById('statusText').classList.add('show');"></script>
 </body>
 </html>
