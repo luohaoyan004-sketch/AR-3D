@@ -29,6 +29,35 @@ canvas {
   pointer-events: none;
 }
 
+#topBirthdayBanner {
+  position: fixed;
+  top: max(58px, calc(env(safe-area-inset-top) + 18px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(94vw, 720px);
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
+  color: #fff2b6;
+  font-size: clamp(38px, 10.5vw, 86px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  text-shadow:
+    0 3px 0 #c76a00,
+    0 6px 0 #8b3f00,
+    0 12px 22px rgba(0,0,0,.55),
+    0 0 18px rgba(255,220,130,.7);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .35s ease;
+}
+
+body.ar-started #topBirthdayBanner {
+  opacity: 1;
+}
+
 #startButton {
   position: fixed;
   left: 50%;
