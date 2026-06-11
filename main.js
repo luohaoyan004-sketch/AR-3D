@@ -18,26 +18,26 @@ const MODEL_URLS = {
   cake: './assets/cake.glb'
 };
 
-// 版式目标：上方横向 Happy Birthday / 中间人物 / 下方蛋糕。
-// signWidth 用“宽度”控制 Happy Birthday，而不是用高度控制，避免变成上方一小团。
+// 最终布局：上方横向 Happy Birthday / 中间人物 / 下方蛋糕。
+// Happy Birthday 如果在 GLB 里是背面/镜像，代码会自动镜像修正。
 const CONFIG = {
   animationSpeed: 0.92,
 
-  fallbackDistancePortrait: -5.65,
-  fallbackDistanceLandscape: -5.05,
-  fallbackFeetYPortrait: -1.72,
-  fallbackFeetYLandscape: -1.36,
+  fallbackDistancePortrait: -5.75,
+  fallbackDistanceLandscape: -5.12,
+  fallbackFeetYPortrait: -1.55,
+  fallbackFeetYLandscape: -1.25,
 
-  avatarHeightFallbackPortrait: 1.38,
-  avatarHeightFallbackLandscape: 1.16,
-  signWidthFallbackPortrait: 2.05,
-  signWidthFallbackLandscape: 1.75,
-  cakeHeightFallbackPortrait: 0.34,
-  cakeHeightFallbackLandscape: 0.28,
+  avatarHeightFallbackPortrait: 1.25,
+  avatarHeightFallbackLandscape: 1.08,
+  signWidthFallbackPortrait: 2.25,
+  signWidthFallbackLandscape: 1.85,
+  cakeHeightFallbackPortrait: 0.36,
+  cakeHeightFallbackLandscape: 0.30,
 
-  avatarHeightXR: 0.78,
-  signWidthXR: 1.12,
-  cakeHeightXR: 0.22
+  avatarHeightXR: 0.72,
+  signWidthXR: 1.18,
+  cakeHeightXR: 0.24
 };
 
 let scene, camera, renderer;
@@ -142,9 +142,11 @@ function createReticle() {
 function addLights() {
   scene.add(new THREE.AmbientLight(0xffffff, 4.3));
   scene.add(new THREE.HemisphereLight(0xffffff, 0xdde7ff, 4.8));
+
   const key = new THREE.DirectionalLight(0xffffff, 5.2);
   key.position.set(2.5, 4.2, 4.6);
   scene.add(key);
+
   const fill = new THREE.DirectionalLight(0xffffff, 3.2);
   fill.position.set(-3.0, 2.8, 3.0);
   scene.add(fill);
@@ -153,6 +155,7 @@ function addLights() {
 async function loadAllRequiredModels() {
   try {
     if (DEBUG) setStatus('加载模型');
+
     const [avatar, sign, cake] = await Promise.all([
       loadRequiredGLB(MODEL_URLS.avatar, 'avatar.glb'),
       loadRequiredGLB(MODEL_URLS.sign, 'happy_birthday.glb'),
@@ -207,6 +210,7 @@ function fixMaterials(root) {
     obj.frustumCulled = false;
     obj.castShadow = false;
     obj.receiveShadow = false;
+
     const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
     materials.forEach((mat) => {
       if (!mat) return;
@@ -246,6 +250,7 @@ async function startExperience() {
 
 async function startWebXR() {
   if (DEBUG) setStatus('扫描地面');
+
   const session = await navigator.xr.requestSession('immersive-ar', {
     requiredFeatures: ['hit-test'],
     optionalFeatures: ['dom-overlay'],
@@ -279,6 +284,7 @@ async function startFallbackCameraMode() {
   fallbackMode = true;
   xrActive = false;
   video.style.display = 'block';
+
   try {
     await startCameraWithFallback();
     cameraStarted = true;
@@ -308,12 +314,14 @@ async function startCameraWithFallback() {
 
 async function startCamera(constraints) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('getUserMedia unavailable');
+
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
   video.srcObject = stream;
   video.muted = true;
   video.playsInline = true;
   video.setAttribute('playsinline', '');
   video.setAttribute('webkit-playsinline', '');
+
   await new Promise((resolve) => {
     if (video.readyState >= 2) return resolve();
     video.onloadedmetadata = () => resolve();
@@ -361,7 +369,7 @@ function normalizeModel(root, targetHeight) {
 function prepareSignAsBanner(root, targetWidth) {
   resetModel(root);
 
-  // 尝试多种朝向，选择“屏幕横向宽度最大”的朝向，解决模型坐标轴不是横向的问题。
+  // 选择最长方向作为横向标题，然后手动镜像修正，避免出现反字/倒字。
   const candidates = [
     [0, 0, 0],
     [0, 0, Math.PI / 2],
@@ -379,16 +387,13 @@ function prepareSignAsBanner(root, targetWidth) {
 
   for (const rot of candidates) {
     root.position.set(0, 0, 0);
-    root.scale.setScalar(1);
+    root.scale.set(1, 1, 1);
     root.rotation.set(rot[0], rot[1], rot[2]);
     root.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(root);
     const size = new THREE.Vector3();
     box.getSize(size);
-    const horizontal = size.x;
-    const vertical = size.y || 0.001;
-    const depth = size.z || 0.001;
-    const score = horizontal * 3 - vertical * 0.55 - depth * 0.15;
+    const score = size.x * 3 - size.y * 0.55 - size.z * 0.15;
     if (score > bestScore) {
       bestScore = score;
       best = rot;
@@ -397,13 +402,16 @@ function prepareSignAsBanner(root, targetWidth) {
 
   root.position.set(0, 0, 0);
   root.rotation.set(best[0], best[1], best[2]);
-  root.scale.setScalar(1);
+  root.scale.set(1, 1, 1);
   root.updateWorldMatrix(true, true);
 
   const box = new THREE.Box3().setFromObject(root);
   const size = new THREE.Vector3();
-  box.getSize(size);
-  root.scale.setScalar(targetWidth / (size.x || 1));
+  const currentWidth = Math.max(size.x, 0.001);
+  const scale = targetWidth / currentWidth;
+
+  // 重点：负 X 缩放修正镜像文字，让 Happy Birthday 正向显示。
+  root.scale.set(-scale, scale, scale);
   root.updateWorldMatrix(true, true);
   centerModel(root, true);
 }
@@ -415,17 +423,18 @@ function layoutScene({ avatarHeight, signWidth, cakeHeight }) {
   prepareSignAsBanner(signScene, signWidth);
   normalizeModel(cakeScene, cakeHeight);
 
+  // 中间：人物
   avatarScene.position.set(0, 0, 0);
 
-  // 标题：真正横向悬在人物上方，略微靠后，避免贴头。
+  // 上方：Happy Birthday 横向标题，明显高于人物头顶。
   signScene.position.x += 0;
-  signScene.position.y += avatarHeight * 1.12;
-  signScene.position.z += -avatarHeight * 0.18;
+  signScene.position.y += avatarHeight * 1.58;
+  signScene.position.z += -avatarHeight * 0.16;
 
-  // 蛋糕：居中放在人物脚下偏前方，形成“上中下”结构。
+  // 下方：蛋糕，居中放在人物下方，空间上和人物拉开。
   cakeScene.position.x += 0;
-  cakeScene.position.y += -avatarHeight * 0.20;
-  cakeScene.position.z += avatarHeight * 0.32;
+  cakeScene.position.y += -avatarHeight * 0.58;
+  cakeScene.position.z += avatarHeight * 0.34;
   cakeScene.rotation.y = 0;
 }
 
