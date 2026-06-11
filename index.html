@@ -11,11 +11,93 @@
 </head>
 <body>
   <video id="cameraVideo" autoplay muted playsinline webkit-playsinline></video>
-  <button id="startButton" aria-label="start" onclick="window.startARExperience && window.startARExperience(event)">开始</button>
+  <button id="startButton" aria-label="start">开始</button>
   <div id="statusText"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="./main.js"></script>
+  <script>
+    // 这个小脚本不依赖 Three.js。先保证 iPhone Safari 点击“开始”一定能触发摄像头权限。
+    (function () {
+      var video = document.getElementById('cameraVideo');
+      var button = document.getElementById('startButton');
+      var status = document.getElementById('statusText');
+      var debug = new URLSearchParams(location.search).has('debug');
+      var starting = false;
+      var started = false;
+
+      function setStatus(text) {
+        if (!status) return;
+        status.textContent = text || '';
+        status.classList.toggle('show', Boolean(text));
+      }
+
+      function readableError(err) {
+        var name = err && (err.name || err.message) || '';
+        if (/NotAllowed|Permission/i.test(name)) return '摄像头权限被拒绝，请在 Safari 设置中允许相机';
+        if (/NotFound|DevicesNotFound/i.test(name)) return '没有找到摄像头';
+        if (/NotReadable|TrackStart/i.test(name)) return '摄像头可能被其他软件占用';
+        if (/Overconstrained/i.test(name)) return '摄像头参数不兼容';
+        if (/getUserMedia unavailable/i.test(name)) return '当前浏览器不支持摄像头调用，请用 Safari/Chrome 打开 HTTPS 链接';
+        return '摄像头启动失败';
+      }
+
+      async function startCamera() {
+        if (started || starting) return;
+        starting = true;
+        button.classList.add('hide');
+        if (debug) setStatus('正在请求摄像头权限');
+
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('getUserMedia unavailable');
+          }
+
+          var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          var constraints = {
+            audio: false,
+            video: {
+              facingMode: isMobile ? { ideal: 'environment' } : 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
+          };
+
+          var stream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+          } catch (e) {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+          }
+
+          video.srcObject = stream;
+          video.muted = true;
+          video.playsInline = true;
+          video.setAttribute('playsinline', '');
+          video.setAttribute('webkit-playsinline', '');
+          await video.play();
+
+          started = true;
+          starting = false;
+          window.AR_CAMERA_READY = true;
+          window.AR_CAMERA_STREAM = stream;
+          if (debug) setStatus('摄像头已打开，正在加载人物');
+          window.dispatchEvent(new CustomEvent('ar-camera-ready', { detail: { stream: stream } }));
+        } catch (err) {
+          console.error('Camera failed:', err);
+          starting = false;
+          button.classList.remove('hide');
+          setStatus(debug ? readableError(err) : '');
+        }
+      }
+
+      window.startARCamera = startCamera;
+      button.addEventListener('click', startCamera, { passive: true });
+      button.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        startCamera();
+      }, { passive: false });
+    })();
+  </script>
+
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
