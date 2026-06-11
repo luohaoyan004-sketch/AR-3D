@@ -12,10 +12,12 @@ const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-const ASSETS = {
-  avatar: ['./assets/avatar.glb', './assets/danceing.glb'],
-  sign: ['./assets/happy_birthday.glb', './assets/happy birthday 3d model.glb'],
-  cake: ['./assets/cake.glb', './assets/fbx.glb']
+// 最终版：三个模型都是必需文件，必须全部成功加载后才显示场景。
+// GitHub assets 目录必须存在这三个文件：avatar.glb / happy_birthday.glb / cake.glb
+const MODEL_URLS = {
+  avatar: './assets/avatar.glb',
+  sign: './assets/happy_birthday.glb',
+  cake: './assets/cake.glb'
 };
 
 const CONFIG = {
@@ -37,37 +39,23 @@ const CONFIG = {
 
 let scene, camera, renderer;
 let rootGroup, contentGroup, reticle;
+let avatarScene, signScene, cakeScene;
 let mixer;
-let hitTestSource = null;
-let hitTestSourceRequested = false;
+let allModelsLoaded = false;
+let modelLoadError = '';
+let startRequested = false;
+let cameraStarted = false;
+let fallbackMode = false;
 let xrActive = false;
 let xrPlaced = false;
-let fallbackMode = false;
-let cameraStarted = false;
-let startRequested = false;
-
-const models = {
-  avatar: null,
-  sign: null,
-  cake: null
-};
-
-const loaded = {
-  avatar: false,
-  sign: false,
-  cake: false
-};
-
-const missing = {
-  sign: false,
-  cake: false
-};
+let hitTestSource = null;
+let hitTestSourceRequested = false;
 
 const clock = new THREE.Clock();
 const loader = new GLTFLoader();
 
 initThree();
-loadModelsRobustly();
+loadAllRequiredModels();
 wireStartButton();
 
 function wireStartButton() {
@@ -171,73 +159,61 @@ function addLights() {
   scene.add(back);
 }
 
-async function loadModelsRobustly() {
-  debug('加载人物模型');
-
+async function loadAllRequiredModels() {
   try {
-    const avatar = await loadFirstAvailable(ASSETS.avatar, true);
-    models.avatar = avatar.scene;
-    loaded.avatar = true;
-    fixMaterials(models.avatar);
-    contentGroup.add(models.avatar);
-    setupAvatarAnimation(avatar.animations || []);
-    refreshLayout();
-    debug('人物已加载，继续加载生日元素');
-  } catch (err) {
-    console.error('Avatar load failed:', err);
-    setStatus(DEBUG ? '人物模型加载失败：请确认 assets/avatar.glb 存在' : '');
-    showStartButton();
-    return;
-  }
+    debug('一次性加载 3 个模型：人物 / Happy Birthday / 蛋糕');
 
-  loadOptionalModel('sign', ASSETS.sign, 'Happy Birthday');
-  loadOptionalModel('cake', ASSETS.cake, '生日蛋糕');
-}
+    const [avatar, sign, cake] = await Promise.all([
+      loadRequiredGLB(MODEL_URLS.avatar, '人物 avatar.glb'),
+      loadRequiredGLB(MODEL_URLS.sign, 'Happy Birthday happy_birthday.glb'),
+      loadRequiredGLB(MODEL_URLS.cake, '生日蛋糕 cake.glb')
+    ]);
 
-async function loadOptionalModel(key, candidates, label) {
-  try {
-    const gltf = await loadFirstAvailable(candidates, false);
-    models[key] = gltf.scene;
-    loaded[key] = true;
-    fixMaterials(models[key]);
-    contentGroup.add(models[key]);
-    refreshLayout();
-    if (DEBUG) {
-      const count = [loaded.avatar, loaded.sign, loaded.cake].filter(Boolean).length;
-      debug(`已加载 ${count}/3 个模型`);
+    avatarScene = avatar.scene;
+    signScene = sign.scene;
+    cakeScene = cake.scene;
+
+    fixMaterials(avatarScene);
+    fixMaterials(signScene);
+    fixMaterials(cakeScene);
+
+    contentGroup.add(avatarScene);
+    contentGroup.add(signScene);
+    contentGroup.add(cakeScene);
+
+    if (avatar.animations && avatar.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(avatarScene);
+      const action = mixer.clipAction(avatar.animations[0]);
+      action.reset();
+      action.setLoop(THREE.LoopRepeat);
+      action.timeScale = CONFIG.animationSpeed;
+      action.play();
     }
-  } catch (err) {
-    missing[key] = true;
-    console.warn(`${label} model missing:`, err);
+
+    allModelsLoaded = true;
+    modelLoadError = '';
+    debug('3 个模型已全部加载，点击开始');
     refreshLayout();
-    if (DEBUG) debug(`${label} 未找到，但人物会继续显示`);
+  } catch (err) {
+    console.error('Required model load failed:', err);
+    modelLoadError = err && err.message ? err.message : String(err);
+    allModelsLoaded = false;
+    setStatus(DEBUG ? `模型加载失败：${modelLoadError}` : '');
+    showStartButton();
   }
 }
 
-function loadFirstAvailable(candidates, required) {
-  let index = 0;
+function loadRequiredGLB(url, label) {
   return new Promise((resolve, reject) => {
-    const tryNext = () => {
-      if (index >= candidates.length) {
-        reject(new Error(`No model found: ${candidates.join(', ')}`));
-        return;
+    loader.load(url, resolve, (event) => {
+      if (DEBUG && event.total) {
+        const p = Math.round(event.loaded / event.total * 100);
+        setStatus(`${label} 加载 ${p}%`);
       }
-
-      const url = candidates[index++];
-      loader.load(url, resolve, undefined, () => tryNext());
-    };
-    tryNext();
+    }, () => {
+      reject(new Error(`缺少 ${label}，请确认 ${url} 已上传到 GitHub assets 目录`));
+    });
   });
-}
-
-function setupAvatarAnimation(animations) {
-  if (!animations || animations.length === 0 || !models.avatar) return;
-  mixer = new THREE.AnimationMixer(models.avatar);
-  const action = mixer.clipAction(animations[0]);
-  action.reset();
-  action.setLoop(THREE.LoopRepeat);
-  action.timeScale = CONFIG.animationSpeed;
-  action.play();
 }
 
 function fixMaterials(root) {
@@ -264,6 +240,13 @@ async function startExperience() {
   if (startRequested) return;
   startRequested = true;
   hideStartButton();
+
+  if (!allModelsLoaded) {
+    setStatus(DEBUG ? (modelLoadError || '等待 3 个模型全部加载完成') : '');
+    startRequested = false;
+    showStartButton();
+    return;
+  }
 
   if (isAndroid && navigator.xr) {
     try {
@@ -321,7 +304,6 @@ async function startFallbackCameraMode() {
     await startCameraWithFallback();
     cameraStarted = true;
     refreshLayout();
-    if (!loaded.avatar) debug('摄像头已打开，等待人物模型加载');
   } catch (err) {
     console.warn('Camera failed:', err);
     startRequested = false;
@@ -384,6 +366,7 @@ function resetModel(root) {
 function normalizeModel(root, targetHeight) {
   if (!root) return;
   resetModel(root);
+
   const box = new THREE.Box3().setFromObject(root);
   const size = new THREE.Vector3();
   box.getSize(size);
@@ -400,26 +383,23 @@ function normalizeModel(root, targetHeight) {
 }
 
 function layoutScene({ avatarHeight, signHeight, cakeHeight }) {
-  if (!loaded.avatar) return;
+  if (!allModelsLoaded) return;
 
-  normalizeModel(models.avatar, avatarHeight);
-  models.avatar.position.set(0, 0, 0);
+  normalizeModel(avatarScene, avatarHeight);
+  normalizeModel(signScene, signHeight);
+  normalizeModel(cakeScene, cakeHeight);
 
-  if (loaded.sign) {
-    normalizeModel(models.sign, signHeight);
-    models.sign.position.set(0, avatarHeight * 0.88, -avatarHeight * 0.16);
-    models.sign.rotation.y = 0;
-  }
+  avatarScene.position.set(0, 0, 0);
 
-  if (loaded.cake) {
-    normalizeModel(models.cake, cakeHeight);
-    models.cake.position.set(avatarHeight * 0.43, 0, avatarHeight * 0.18);
-    models.cake.rotation.y = -0.35;
-  }
+  signScene.position.set(0, avatarHeight * 0.88, -avatarHeight * 0.16);
+  signScene.rotation.y = 0;
+
+  cakeScene.position.set(avatarHeight * 0.43, 0, avatarHeight * 0.18);
+  cakeScene.rotation.y = -0.35;
 }
 
 function refreshLayout() {
-  if (!loaded.avatar) return;
+  if (!allModelsLoaded) return;
 
   if (fallbackMode && cameraStarted) {
     layoutFallback();
@@ -443,13 +423,7 @@ function layoutFallback() {
   rootGroup.position.set(0, feetY, z);
   rootGroup.rotation.set(0, 0, 0);
   rootGroup.visible = true;
-
-  if (DEBUG) {
-    const count = [loaded.avatar, loaded.sign, loaded.cake].filter(Boolean).length;
-    setStatus(count === 3 ? '' : `已显示 ${count}/3 个模型；请确认 birthday/cake glb 已上传到 assets`);
-  } else {
-    setStatus('');
-  }
+  setStatus('');
 }
 
 function layoutXRAtCurrentAnchor() {
@@ -461,7 +435,7 @@ function layoutXRAtCurrentAnchor() {
 }
 
 function placeOnReticle() {
-  if (!loaded.avatar || !reticle.visible || xrPlaced) return;
+  if (!allModelsLoaded || !reticle.visible || xrPlaced) return;
 
   layoutScene({
     avatarHeight: CONFIG.avatarHeightXR,
@@ -506,7 +480,7 @@ function updateHitTest(frame) {
     const pose = hit.getPose(referenceSpace);
     reticle.visible = !xrPlaced;
     reticle.matrix.fromArray(pose.transform.matrix);
-    if (DEBUG && !xrPlaced) setStatus('已识别平面，正在放置模型');
+    if (DEBUG && !xrPlaced) setStatus('已识别平面，正在一次性放置 3 个模型');
     if (!xrPlaced) placeOnReticle();
   } else if (!xrPlaced) {
     reticle.visible = false;
