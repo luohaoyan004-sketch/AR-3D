@@ -11,17 +11,16 @@
 </head>
 <body>
   <video id="cameraVideo" autoplay muted playsinline webkit-playsinline></video>
+  <div id="topBirthdayBanner" aria-hidden="true">Happy Birthday</div>
   <button id="startButton" aria-label="start">开始</button>
   <div id="statusText"></div>
 
   <script>
-    // 只负责把“开始”点击转交给 main.js。
-    // Android Chrome：main.js 会尝试 WebXR 平面识别。
-    // iPhone Safari / 不支持 WebXR：main.js 会自动退回摄像头叠加模式。
     (function () {
       var button = document.getElementById('startButton');
       function requestStart(e) {
         if (e && e.preventDefault) e.preventDefault();
+        document.body.classList.add('ar-started');
         if (window.startARExperience) {
           window.startARExperience();
         } else {
