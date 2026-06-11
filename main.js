@@ -1,6 +1,3 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-
 const video = document.getElementById('cameraVideo');
 const statusText = document.getElementById('statusText');
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -64,7 +61,7 @@ function bootThree() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x000000, 0);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 2.75;
   document.body.appendChild(renderer.domElement);
@@ -105,7 +102,7 @@ function addLights() {
 
 function loadAvatar() {
   setStatus(DEBUG ? '加载人物模型' : '');
-  const loader = new GLTFLoader();
+  const loader = new THREE.GLTFLoader();
   loader.load('./assets/avatar.glb', (gltf) => {
     avatarRoot = gltf.scene;
     fixMaterials(avatarRoot);
@@ -152,7 +149,7 @@ function fixMaterials(root) {
       mat.depthWrite = true;
       mat.transparent = false;
       mat.alphaTest = Math.max(mat.alphaTest || 0, 0.18);
-      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+      if (mat.map) mat.map.encoding = THREE.sRGBEncoding;
       mat.needsUpdate = true;
     });
   });
