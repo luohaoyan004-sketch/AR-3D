@@ -16,12 +16,11 @@ let avatarHolder, avatarRoot, mixer;
 let modelLoaded = false;
 let cameraStarted = false;
 let experienceStarted = false;
-let normalizedOnce = false;
 
 const clock = new THREE.Clock();
 
-// iOS稳定版：不用 WebXR 平面检测，避免 iPhone 黑屏。
-// 人物固定在摄像头画面的下方，完整显示，并随镜头画面一起移动。
+// iOS / Vercel 稳定版：不自动隐藏按钮，不自动强行启动相机。
+// 手机浏览器通常要求用户点击一次，点击“开始”后再请求相机权限，避免黑屏。
 const CONFIG = {
   modelHeightPortrait: isIOS ? 1.55 : 1.45,
   modelHeightLandscape: isIOS ? 1.25 : 1.20,
@@ -34,13 +33,13 @@ const CONFIG = {
 
 initThree();
 loadAvatar();
+showStartButton();
 
-startButton.addEventListener('click', () => startExperience(false), { passive: true });
-window.addEventListener('pageshow', () => {
-  // 尝试自动弹出 iOS/Android 的系统摄像头权限。
-  // 如果系统要求用户手势，会失败并显示唯一的“开始”按钮。
-  setTimeout(() => startExperience(true), 220);
-});
+startButton.addEventListener('click', () => startExperience(), { passive: true });
+startButton.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  startExperience();
+}, { passive: false });
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && cameraStarted && video.paused) {
@@ -55,52 +54,54 @@ function setStatus(message) {
 }
 
 function showStartButton() {
+  startButton.classList.remove('hide');
   startButton.classList.add('show');
 }
 
 function hideStartButton() {
+  startButton.classList.add('hide');
   startButton.classList.remove('show');
 }
 
-async function startExperience(isAutoAttempt) {
-  if (experienceStarted || cameraStarted) return;
+async function startExperience() {
+  if (cameraStarted || experienceStarted) return;
   experienceStarted = true;
   hideStartButton();
-  setStatus(DEBUG ? '启动摄像头' : '');
+  setStatus(DEBUG ? '正在打开摄像头' : '');
 
   try {
-    await startCamera();
+    await startCameraWithFallback();
     cameraStarted = true;
     setStatus(modelLoaded ? '' : (DEBUG ? '加载人物模型' : ''));
     if (modelLoaded) showAvatarStable();
   } catch (err) {
     console.warn('Camera start failed:', err);
     experienceStarted = false;
-
-    // 自动启动失败是正常情况：iOS 有时需要用户点一下。
-    if (isAutoAttempt) {
-      setStatus('');
-      showStartButton();
-    } else {
-      setStatus(DEBUG ? readableCameraError(err) : '');
-      showStartButton();
-    }
+    setStatus(DEBUG ? readableCameraError(err) : '');
+    showStartButton();
   }
 }
 
-async function startCamera() {
+async function startCameraWithFallback() {
+  try {
+    await startCamera({
+      audio: false,
+      video: {
+        facingMode: isMobile ? { ideal: 'environment' } : 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+  } catch (firstErr) {
+    console.warn('First camera constraint failed, retrying simple video:', firstErr);
+    await startCamera({ audio: false, video: true });
+  }
+}
+
+async function startCamera(constraints) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('getUserMedia unavailable');
   }
-
-  const constraints = {
-    audio: false,
-    video: {
-      facingMode: isMobile ? { ideal: 'environment' } : 'user',
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
-  };
 
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
   video.srcObject = stream;
@@ -118,10 +119,11 @@ async function startCamera() {
 
 function readableCameraError(err) {
   const name = err && (err.name || err.message) || '';
-  if (/NotAllowed|Permission/i.test(name)) return '摄像头权限被拒绝，请在 Safari 设置中允许相机';
+  if (/NotAllowed|Permission/i.test(name)) return '摄像头权限被拒绝，请在 Safari/Chrome 设置中允许相机';
   if (/NotFound|DevicesNotFound/i.test(name)) return '没有找到摄像头';
   if (/NotReadable|TrackStart/i.test(name)) return '摄像头可能被其他软件占用';
   if (/Overconstrained/i.test(name)) return '摄像头参数不兼容';
+  if (/getUserMedia unavailable/i.test(name)) return '当前浏览器不支持摄像头调用，请使用 Safari 或 Chrome 并打开 HTTPS 链接';
   return '摄像头启动失败';
 }
 
@@ -196,7 +198,7 @@ function loadAvatar() {
       action.play();
     }
 
-    setStatus(cameraStarted ? '' : (DEBUG ? '等待摄像头' : ''));
+    setStatus(cameraStarted ? '' : (DEBUG ? '等待点击开始' : ''));
     if (cameraStarted) showAvatarStable();
   }, (event) => {
     if (DEBUG && event.total) {
@@ -249,7 +251,6 @@ function normalizeAvatar(root, targetHeight) {
   root.position.x -= center.x;
   root.position.y -= box2.min.y;
   root.position.z -= center.z;
-  normalizedOnce = true;
 }
 
 function showAvatarStable() {
@@ -273,7 +274,6 @@ function renderLoop() {
   const dt = Math.min(clock.getDelta(), 0.033);
   if (mixer) mixer.update(dt);
 
-  // 稍微跟随屏幕方向保持稳定，不做真实世界平面锚定，确保 iOS 不黑屏。
   if (avatarHolder && avatarHolder.visible && cameraStarted) {
     avatarHolder.rotation.y = 0;
   }
