@@ -1,3 +1,6 @@
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
 const video = document.getElementById('cameraVideo');
 const statusText = document.getElementById('statusText');
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -61,7 +64,7 @@ function bootThree() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x000000, 0);
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 2.75;
   document.body.appendChild(renderer.domElement);
@@ -102,8 +105,16 @@ function addLights() {
 
 function loadAvatar() {
   setStatus(DEBUG ? '加载人物模型' : '');
-  const loader = new THREE.GLTFLoader();
+  const loader = new GLTFLoader();
+
+  const timeout = setTimeout(() => {
+    if (!modelLoaded && DEBUG) {
+      setStatus('人物模型加载较慢，请继续等待；若一直不出现，检查 assets/avatar.glb 是否能访问');
+    }
+  }, 15000);
+
   loader.load('./assets/avatar.glb', (gltf) => {
+    clearTimeout(timeout);
     avatarRoot = gltf.scene;
     fixMaterials(avatarRoot);
     avatarHolder.add(avatarRoot);
@@ -129,8 +140,9 @@ function loadAvatar() {
       setStatus('加载人物模型 ' + Math.round(event.loaded / event.total * 100) + '%');
     }
   }, (err) => {
+    clearTimeout(timeout);
     console.error('Model load failed:', err);
-    setStatus(DEBUG ? '人物模型加载失败：检查 assets/avatar.glb' : '');
+    setStatus(DEBUG ? '人物模型加载失败：检查 /assets/avatar.glb' : '');
   });
 }
 
@@ -149,7 +161,7 @@ function fixMaterials(root) {
       mat.depthWrite = true;
       mat.transparent = false;
       mat.alphaTest = Math.max(mat.alphaTest || 0, 0.18);
-      if (mat.map) mat.map.encoding = THREE.sRGBEncoding;
+      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
       mat.needsUpdate = true;
     });
   });
