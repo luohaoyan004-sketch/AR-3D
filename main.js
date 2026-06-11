@@ -1,10 +1,11 @@
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+
 const video = document.getElementById('cameraVideo');
-const startButton = document.getElementById('startButton');
 const statusText = document.getElementById('statusText');
 const DEBUG = new URLSearchParams(location.search).has('debug');
 if (DEBUG) document.body.classList.add('debug');
 
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -12,8 +13,6 @@ let scene, camera, renderer;
 let avatarHolder, avatarRoot, mixer;
 let modelLoaded = false;
 let cameraStarted = false;
-let experienceStarted = false;
-
 const clock = new THREE.Clock();
 
 const CONFIG = {
@@ -26,33 +25,21 @@ const CONFIG = {
   animationSpeed: 0.92
 };
 
-window.startARExperience = startExperience;
+bootThree();
+loadAvatar();
 
-function boot() {
-  try {
-    initThree();
-    loadAvatar();
-    showStartButton();
-    startButton.onclick = startExperience;
-    startButton.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      startExperience(e);
-    }, { passive: false });
-  } catch (err) {
-    console.error('Boot failed:', err);
-    setStatus(DEBUG ? ('启动失败：' + (err.message || err)) : '');
-    showStartButton();
-  }
-}
+window.addEventListener('ar-camera-ready', () => {
+  cameraStarted = true;
+  if (modelLoaded) showAvatarStable();
+  setStatus(DEBUG && !modelLoaded ? '摄像头已打开，等待人物模型' : '');
+});
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot);
-} else {
-  boot();
+if (window.AR_CAMERA_READY) {
+  cameraStarted = true;
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && cameraStarted && video.paused) {
+  if (!document.hidden && window.AR_CAMERA_READY && video.paused) {
     video.play().catch(() => {});
   }
 });
@@ -63,82 +50,7 @@ function setStatus(message) {
   statusText.classList.toggle('show', Boolean(message));
 }
 
-function showStartButton() {
-  startButton.classList.remove('hide');
-  startButton.classList.add('show');
-}
-
-function hideStartButton() {
-  startButton.classList.add('hide');
-  startButton.classList.remove('show');
-}
-
-async function startExperience(event) {
-  if (event && event.preventDefault) event.preventDefault();
-  if (cameraStarted || experienceStarted) return;
-  experienceStarted = true;
-  hideStartButton();
-  setStatus(DEBUG ? '正在打开摄像头' : '');
-
-  try {
-    await startCameraWithFallback();
-    cameraStarted = true;
-    setStatus(modelLoaded ? '' : (DEBUG ? '加载人物模型' : ''));
-    if (modelLoaded) showAvatarStable();
-  } catch (err) {
-    console.warn('Camera start failed:', err);
-    experienceStarted = false;
-    setStatus(DEBUG ? readableCameraError(err) : '');
-    showStartButton();
-  }
-}
-
-async function startCameraWithFallback() {
-  try {
-    await startCamera({
-      audio: false,
-      video: {
-        facingMode: isMobile ? { ideal: 'environment' } : 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }
-    });
-  } catch (firstErr) {
-    console.warn('First camera constraint failed, retrying simple video:', firstErr);
-    await startCamera({ audio: false, video: true });
-  }
-}
-
-async function startCamera(constraints) {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('getUserMedia unavailable');
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
-  video.srcObject = stream;
-  video.muted = true;
-  video.playsInline = true;
-  video.setAttribute('playsinline', '');
-  video.setAttribute('webkit-playsinline', '');
-
-  await new Promise((resolve) => {
-    if (video.readyState >= 2) return resolve();
-    video.onloadedmetadata = () => resolve();
-  });
-  await video.play();
-}
-
-function readableCameraError(err) {
-  const name = err && (err.name || err.message) || '';
-  if (/NotAllowed|Permission/i.test(name)) return '摄像头权限被拒绝，请在 Safari/Chrome 设置中允许相机';
-  if (/NotFound|DevicesNotFound/i.test(name)) return '没有找到摄像头';
-  if (/NotReadable|TrackStart/i.test(name)) return '摄像头可能被其他软件占用';
-  if (/Overconstrained/i.test(name)) return '摄像头参数不兼容';
-  if (/getUserMedia unavailable/i.test(name)) return '当前浏览器不支持摄像头调用，请使用 Safari 或 Chrome 并打开 HTTPS 链接';
-  return '摄像头启动失败';
-}
-
-function initThree() {
+function bootThree() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.01, 100);
   camera.position.set(0, 0, 0);
@@ -152,7 +64,7 @@ function initThree() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isIOS ? 1.5 : 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x000000, 0);
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 2.75;
   document.body.appendChild(renderer.domElement);
@@ -161,7 +73,7 @@ function initThree() {
   avatarHolder.visible = false;
   scene.add(avatarHolder);
 
-  addStableLighting();
+  addLights();
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -174,7 +86,7 @@ function initThree() {
   renderer.setAnimationLoop(renderLoop);
 }
 
-function addStableLighting() {
+function addLights() {
   scene.add(new THREE.AmbientLight(0xffffff, 3.8));
   scene.add(new THREE.HemisphereLight(0xffffff, 0xd8e4ff, 4.2));
 
@@ -193,7 +105,7 @@ function addStableLighting() {
 
 function loadAvatar() {
   setStatus(DEBUG ? '加载人物模型' : '');
-  const loader = new THREE.GLTFLoader();
+  const loader = new GLTFLoader();
   loader.load('./assets/avatar.glb', (gltf) => {
     avatarRoot = gltf.scene;
     fixMaterials(avatarRoot);
@@ -209,8 +121,12 @@ function loadAvatar() {
       action.play();
     }
 
-    setStatus(cameraStarted ? '' : (DEBUG ? '等待点击开始' : ''));
-    if (cameraStarted) showAvatarStable();
+    if (window.AR_CAMERA_READY || cameraStarted) {
+      cameraStarted = true;
+      showAvatarStable();
+    } else {
+      setStatus(DEBUG ? '人物已加载，请点击开始' : '');
+    }
   }, (event) => {
     if (DEBUG && event.total) {
       setStatus('加载人物模型 ' + Math.round(event.loaded / event.total * 100) + '%');
@@ -218,7 +134,6 @@ function loadAvatar() {
   }, (err) => {
     console.error('Model load failed:', err);
     setStatus(DEBUG ? '人物模型加载失败：检查 assets/avatar.glb' : '');
-    showStartButton();
   });
 }
 
@@ -237,7 +152,7 @@ function fixMaterials(root) {
       mat.depthWrite = true;
       mat.transparent = false;
       mat.alphaTest = Math.max(mat.alphaTest || 0, 0.18);
-      if (mat.map) mat.map.encoding = THREE.sRGBEncoding;
+      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
       mat.needsUpdate = true;
     });
   });
