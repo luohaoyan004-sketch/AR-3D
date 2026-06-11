@@ -15,86 +15,21 @@
   <div id="statusText"></div>
 
   <script>
-    // 相机权限独立启动：不依赖 Three.js / GLB，先保证 Safari 点击后能打开摄像头。
+    // 只负责把“开始”点击转交给 main.js。
+    // Android Chrome：main.js 会尝试 WebXR 平面识别。
+    // iPhone Safari / 不支持 WebXR：main.js 会自动退回摄像头叠加模式。
     (function () {
-      var video = document.getElementById('cameraVideo');
       var button = document.getElementById('startButton');
-      var status = document.getElementById('statusText');
-      var debug = new URLSearchParams(location.search).has('debug');
-      var starting = false;
-      var started = false;
-
-      function setStatus(text) {
-        if (!status) return;
-        status.textContent = text || '';
-        status.classList.toggle('show', Boolean(text));
-      }
-
-      function readableError(err) {
-        var name = err && (err.name || err.message) || '';
-        if (/NotAllowed|Permission/i.test(name)) return '摄像头权限被拒绝，请在 Safari 设置中允许相机';
-        if (/NotFound|DevicesNotFound/i.test(name)) return '没有找到摄像头';
-        if (/NotReadable|TrackStart/i.test(name)) return '摄像头可能被其他软件占用';
-        if (/Overconstrained/i.test(name)) return '摄像头参数不兼容';
-        if (/getUserMedia unavailable/i.test(name)) return '当前浏览器不支持摄像头调用，请用 Safari/Chrome 打开 HTTPS 链接';
-        return '摄像头启动失败：' + name;
-      }
-
-      async function startCamera() {
-        if (started || starting) return;
-        starting = true;
-        button.classList.add('hide');
-        if (debug) setStatus('正在请求摄像头权限');
-
-        try {
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('getUserMedia unavailable');
-          }
-
-          var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-          var constraints = {
-            audio: false,
-            video: {
-              facingMode: isMobile ? { ideal: 'environment' } : 'user',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            }
-          };
-
-          var stream;
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-          } catch (e) {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
-          }
-
-          video.srcObject = stream;
-          video.muted = true;
-          video.playsInline = true;
-          video.setAttribute('playsinline', '');
-          video.setAttribute('webkit-playsinline', '');
-          await video.play();
-
-          started = true;
-          starting = false;
-          window.AR_CAMERA_READY = true;
-          window.AR_CAMERA_STREAM = stream;
-          if (debug) setStatus('摄像头已打开，正在加载人物');
-          window.dispatchEvent(new CustomEvent('ar-camera-ready', { detail: { stream: stream } }));
-        } catch (err) {
-          console.error('Camera failed:', err);
-          starting = false;
-          button.classList.remove('hide');
-          setStatus(debug ? readableError(err) : '');
+      function requestStart(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (window.startARExperience) {
+          window.startARExperience();
+        } else {
+          window.AR_PENDING_START = true;
         }
       }
-
-      window.startARCamera = startCamera;
-      button.addEventListener('click', startCamera, { passive: true });
-      button.addEventListener('touchend', function (e) {
-        e.preventDefault();
-        startCamera();
-      }, { passive: false });
+      button.addEventListener('click', requestStart, { passive: false });
+      button.addEventListener('touchend', requestStart, { passive: false });
     })();
   </script>
 
@@ -106,6 +41,6 @@
     }
   }
   </script>
-  <script type="module" src="./main.js" onerror="document.getElementById('statusText').textContent='Three.js 脚本加载失败';document.getElementById('statusText').classList.add('show');"></script>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
