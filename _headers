@@ -1,0 +1,7 @@
+/*
+  Permissions-Policy: camera=(self), fullscreen=(self), xr-spatial-tracking=(self)
+  Cache-Control: public, max-age=0, must-revalidate
+
+/assets/*.glb
+  Content-Type: model/gltf-binary
+  Cache-Control: public, max-age=3600
