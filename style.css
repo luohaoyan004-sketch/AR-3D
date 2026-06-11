@@ -1,0 +1,73 @@
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#cameraVideo {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  background: #000;
+  z-index: 0;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 2;
+  pointer-events: none;
+}
+
+#startButton {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  display: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 16px 42px;
+  color: #111;
+  background: rgba(255,255,255,.96);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 14px 40px rgba(0,0,0,.32);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#startButton.show {
+  display: block;
+}
+
+#statusText {
+  position: fixed;
+  left: 50%;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 10;
+  display: none;
+  max-width: 88vw;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: #fff;
+  background: rgba(0,0,0,.58);
+  font-size: 13px;
+  text-align: center;
+}
+
+body.debug #statusText.show {
+  display: block;
+}
