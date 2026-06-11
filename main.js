@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 
 const video = document.getElementById('cameraVideo');
 const startButton = document.getElementById('startButton');
@@ -19,8 +19,6 @@ let experienceStarted = false;
 
 const clock = new THREE.Clock();
 
-// iOS / Vercel 稳定版：不自动隐藏按钮，不自动强行启动相机。
-// 手机浏览器通常要求用户点击一次，点击“开始”后再请求相机权限，避免黑屏。
 const CONFIG = {
   modelHeightPortrait: isIOS ? 1.55 : 1.45,
   modelHeightLandscape: isIOS ? 1.25 : 1.20,
@@ -35,7 +33,10 @@ initThree();
 loadAvatar();
 showStartButton();
 
-startButton.addEventListener('click', () => startExperience(), { passive: true });
+window.startARExperience = startExperience;
+startButton.onclick = startExperience;
+startButton.addEventListener('click', startExperience, { passive: true });
+startButton.addEventListener('touchstart', () => {}, { passive: true });
 startButton.addEventListener('touchend', (e) => {
   e.preventDefault();
   startExperience();
@@ -63,7 +64,8 @@ function hideStartButton() {
   startButton.classList.remove('show');
 }
 
-async function startExperience() {
+async function startExperience(event) {
+  if (event && event.preventDefault) event.preventDefault();
   if (cameraStarted || experienceStarted) return;
   experienceStarted = true;
   hideStartButton();
