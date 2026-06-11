@@ -35,7 +35,7 @@ canvas {
   top: 50%;
   transform: translate(-50%, -50%);
   z-index: 9;
-  display: none;
+  display: block;
   border: 0;
   border-radius: 999px;
   padding: 16px 42px;
@@ -50,6 +50,10 @@ canvas {
 
 #startButton.show {
   display: block;
+}
+
+#startButton.hide {
+  display: none;
 }
 
 #statusText {
